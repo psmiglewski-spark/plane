@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 // icons
 import { Eye, EyeOff } from "lucide-react";
@@ -77,6 +77,7 @@ export function InstanceSetupForm() {
   const [isPasswordInputFocused, setIsPasswordInputFocused] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRetryPasswordInputFocused, setIsRetryPasswordInputFocused] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const handleShowPassword = (key: keyof typeof showPassword) =>
     setShowPassword((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -136,6 +137,20 @@ export function InstanceSetupForm() {
   const confirmPassword = formData?.confirm_password ?? "";
   const renderPasswordMatchError = !isRetryPasswordInputFocused || confirmPassword.length >= password.length;
 
+  const handleCSRFToken = async () => {
+    const form = formRef.current;
+    if (!form) return false;
+
+    const token = csrfToken ?? (await authService.requestCSRFToken().catch(() => undefined))?.csrf_token;
+    if (!token) return false;
+
+    setCsrfToken(token);
+    const csrfElement = form.querySelector("input[name=csrfmiddlewaretoken]");
+    csrfElement?.setAttribute("value", token);
+
+    return true;
+  };
+
   return (
     <>
       <AuthHeader />
@@ -151,10 +166,22 @@ export function InstanceSetupForm() {
               <Banner type="error" message={errorData?.message} />
             )}
           <form
+            ref={formRef}
             className="space-y-4"
             method="POST"
             action={`${API_BASE_URL}/api/instances/admins/sign-up/`}
-            onSubmit={() => setIsSubmitting(true)}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setIsSubmitting(true);
+
+              const hasCSRFToken = await handleCSRFToken();
+              if (!hasCSRFToken) {
+                setIsSubmitting(false);
+                return;
+              }
+
+              formRef.current?.submit();
+            }}
             onError={() => setIsSubmitting(false)}
           >
             <input type="hidden" name="csrfmiddlewaretoken" value={csrfToken} />
