@@ -124,8 +124,11 @@ export const AuthPasswordForm = observer(function AuthPasswordForm(props: Props)
     const token = await (csrfPromise ?? authService.requestCSRFToken()).catch(() => undefined);
     if (!token?.csrf_token) return false;
 
-    const csrfElement = form.querySelector("input[name=csrfmiddlewaretoken]");
-    csrfElement?.setAttribute("value", token.csrf_token);
+    const csrfElement = form.querySelector<HTMLInputElement>("input[name=csrfmiddlewaretoken]");
+    if (!csrfElement) return false;
+
+    csrfElement.value = token.csrf_token;
+    csrfElement.setAttribute("value", token.csrf_token);
 
     return true;
   };
