@@ -117,8 +117,11 @@ export function InstanceSignInForm() {
     if (!token) return false;
 
     setCsrfToken(token);
-    const csrfElement = form.querySelector("input[name=csrfmiddlewaretoken]");
-    csrfElement?.setAttribute("value", token);
+    const csrfElement = form.querySelector<HTMLInputElement>("input[name=csrfmiddlewaretoken]");
+    if (!csrfElement) return false;
+
+    csrfElement.value = token;
+    csrfElement.setAttribute("value", token);
 
     return true;
   };
