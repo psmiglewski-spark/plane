@@ -1,0 +1,95 @@
+name: Sparktech GHCR Images
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Optional image tag override
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: sparktech-ghcr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    runs-on: ubuntu-22.04
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+    steps:
+      - name: Compute image tags
+        id: meta
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            image_tag="${{ github.event.inputs.image_tag }}"
+          elif [ "${GITHUB_REF_NAME}" = "dev" ]; then
+            image_tag="dev"
+          elif [ "${GITHUB_REF_NAME}" = "main" ]; then
+            image_tag="prod"
+          else
+            image_tag="$(echo "${GITHUB_REF_NAME}" | tr -cs '[:alnum:].-' '-')"
+          fi
+          echo "image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.image }}
+    runs-on: ubuntu-22.04
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: plane-frontend
+            context: .
+            dockerfile: ./apps/web/Dockerfile.web
+          - image: plane-space
+            context: .
+            dockerfile: ./apps/space/Dockerfile.space
+          - image: plane-admin
+            context: .
+            dockerfile: ./apps/admin/Dockerfile.admin
+          - image: plane-live
+            context: .
+            dockerfile: ./apps/live/Dockerfile.live
+          - image: plane-backend
+            context: ./apps/api
+            dockerfile: ./apps/api/Dockerfile.api
+          - image: plane-proxy
+            context: ./apps/proxy
+            dockerfile: ./apps/proxy/Dockerfile.ce
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          pull: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.metadata.outputs.image_tag }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.metadata.outputs.image_tag }}-${{ needs.metadata.outputs.short_sha }}
