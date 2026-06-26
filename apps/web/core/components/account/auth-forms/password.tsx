@@ -118,11 +118,19 @@ export const AuthPasswordForm = observer(function AuthPasswordForm(props: Props)
   const renderPasswordMatchError = !isRetryPasswordInputFocused || confirmPassword.length >= password.length;
 
   const handleCSRFToken = async () => {
-    if (!formRef || !formRef.current) return;
-    const token = await csrfPromise;
-    if (!token?.csrf_token) return;
-    const csrfElement = formRef.current.querySelector("input[name=csrfmiddlewaretoken]");
-    csrfElement?.setAttribute("value", token?.csrf_token);
+    const form = formRef.current;
+    if (!form) return false;
+
+    const token = await (csrfPromise ?? authService.requestCSRFToken()).catch(() => undefined);
+    if (!token?.csrf_token) return false;
+
+    const csrfElement = form.querySelector<HTMLInputElement>("input[name=csrfmiddlewaretoken]");
+    if (!csrfElement) return false;
+
+    csrfElement.value = token.csrf_token;
+    csrfElement.setAttribute("value", token.csrf_token);
+
+    return true;
   };
 
   return (
@@ -151,7 +159,11 @@ export const AuthPasswordForm = observer(function AuthPasswordForm(props: Props)
         action={`${API_BASE_URL}/auth/${mode === EAuthModes.SIGN_IN ? "sign-in" : "sign-up"}/`}
         onSubmit={async (event) => {
           event.preventDefault(); // Prevent form from submitting by default
-          await handleCSRFToken();
+          const hasCSRFToken = await handleCSRFToken();
+          if (!hasCSRFToken) {
+            setIsSubmitting(false);
+            return;
+          }
           const isPasswordValid =
             mode === EAuthModes.SIGN_UP
               ? getPasswordStrength(passwordFormData.password) === E_PASSWORD_STRENGTH.STRENGTH_VALID
