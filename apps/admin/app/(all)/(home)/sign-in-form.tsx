@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 // plane internal packages
@@ -61,6 +61,7 @@ export function InstanceSignInForm() {
   const [formData, setFormData] = useState<TFormData>(defaultFromData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorInfo, setErrorInfo] = useState<TAdminAuthErrorInfo | undefined>(undefined);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const handleFormChange = (key: keyof TFormData, value: string | boolean) =>
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -108,6 +109,23 @@ export function InstanceSignInForm() {
     }
   }, [errorCode]);
 
+  const handleCSRFToken = async () => {
+    const form = formRef.current;
+    if (!form) return false;
+
+    const token = csrfToken ?? (await authService.requestCSRFToken().catch(() => undefined))?.csrf_token;
+    if (!token) return false;
+
+    setCsrfToken(token);
+    const csrfElement = form.querySelector<HTMLInputElement>("input[name=csrfmiddlewaretoken]");
+    if (!csrfElement) return false;
+
+    csrfElement.value = token;
+    csrfElement.setAttribute("value", token);
+
+    return true;
+  };
+
   return (
     <>
       <AuthHeader />
@@ -118,10 +136,22 @@ export function InstanceSignInForm() {
             subHeading="Configure instance-wide settings to secure your instance"
           />
           <form
+            ref={formRef}
             className="space-y-4"
             method="POST"
             action={`${API_BASE_URL}/api/instances/admins/sign-in/`}
-            onSubmit={() => setIsSubmitting(true)}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setIsSubmitting(true);
+
+              const hasCSRFToken = await handleCSRFToken();
+              if (!hasCSRFToken) {
+                setIsSubmitting(false);
+                return;
+              }
+
+              formRef.current?.submit();
+            }}
             onError={() => setIsSubmitting(false)}
           >
             {errorData.type && errorData?.message ? (
